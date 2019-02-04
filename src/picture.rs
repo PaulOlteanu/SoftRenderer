@@ -1,3 +1,5 @@
+use std::cmp;
+
 use crate::model::Model;
 
 pub fn render_model((resolution_x, resolution_y): (u32, u32), file_path: &str, model: &Model) {
@@ -5,12 +7,32 @@ pub fn render_model((resolution_x, resolution_y): (u32, u32), file_path: &str, m
 
     let verts = model.verts();
     for face in model.faces() {
-        println!("FACE: {:?}", face);
         for j in 0..3 {
-            let start = (((verts[face[j] as usize].0 + 1.0 ) * resolution_x as f64 / 2.0) as i64, ((verts[face[j] as usize].1 + 1.0 ) * resolution_y as f64 / 2.0) as i64);
-            let end = (((verts[face[(j + 1) % 3] as usize].0 + 1.0 ) * resolution_x as f64 / 2.0) as i64, ((verts[face[(j + 1) % 3] as usize].1 + 1.0 ) * resolution_y as f64 / 2.0) as i64);
+            let start = verts[face[j] as usize];
+            let end = verts[face[(j + 1) % 3] as usize];
 
-            println!("Drawing line from: {:?} to {:?}", start, end);
+            let start = (
+                cmp::min(
+                    ((start.0 + 1.0) * resolution_x as f64 / 2.0) as i64,
+                    resolution_x as i64 - 1,
+                ),
+                cmp::min(
+                    ((start.1 + 1.0) * resolution_y as f64 / 2.0) as i64,
+                    resolution_y as i64 - 1,
+                ),
+            );
+
+            let end = (
+                cmp::min(
+                    ((end.0 + 1.0) * resolution_x as f64 / 2.0) as i64,
+                    resolution_x as i64 - 1,
+                ),
+                cmp::min(
+                    ((end.1 + 1.0) * resolution_y as f64 / 2.0) as i64,
+                    resolution_y as i64 - 1,
+                ),
+            );
+
             line(start, end, &mut image_buffer, (255, 255, 255));
         }
     }

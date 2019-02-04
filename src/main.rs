@@ -1,5 +1,6 @@
 mod model;
 mod picture;
+
 use crate::model::Model;
 
 fn main() {

@@ -19,7 +19,7 @@ impl<'a> Model<'a> {
         let mut verts = Vec::new();
         let mut faces = Vec::new();
 
-        let face_regex = Regex::new(r"(\d)+(\.)*(\d)*").unwrap();
+        let face_regex = Regex::new(r"(\d+)(?:/\d+)+").unwrap();
 
         for line in file.lines() {
             let l = line.unwrap();
@@ -36,18 +36,26 @@ impl<'a> Model<'a> {
                 Some("f") => {
                     let mut vertices = Vec::new();
                     for vert in l {
-                        let v = face_regex.captures(vert).unwrap().get(1).map_or("", |m| m.as_str());
-                        vertices.push(v.parse::<i64>().expect("Couldn't parse obj file"));
+                        let v = face_regex
+                            .captures(vert)
+                            .unwrap()
+                            .get(1)
+                            .map_or("", |m| m.as_str());
+
+                        vertices.push(v.parse::<i64>().expect("Couldn't parse obj file") - 1);
                     }
                     faces.push(vertices);
                 }
 
-                _x => {
-                }
+                _x => {}
             }
         }
 
-        Self { file_path, verts, faces }
+        Self {
+            file_path,
+            verts,
+            faces,
+        }
     }
 
     pub fn verts(&self) -> &Vec<(f64, f64, f64)> {
