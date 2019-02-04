@@ -1,10 +1,10 @@
-use std::io::BufReader;
-use std::io::BufRead;
 use std::fs::File;
+use std::io::BufRead;
+use std::io::BufReader;
 
 pub struct Model<'a> {
     file_path: &'a str,
-    data: Vec<String>
+    data: Vec<String>,
 }
 
 impl<'a> Model<'a> {
@@ -17,6 +17,6 @@ impl<'a> Model<'a> {
             data.push(l);
         }
 
-        Self{data, file_path}
+        Self { data, file_path }
     }
 }
