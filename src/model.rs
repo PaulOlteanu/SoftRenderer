@@ -2,12 +2,14 @@ use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
 
+use cgmath::Vector3;
+
 use regex::Regex;
 
 #[derive(Debug)]
 pub struct Model<'a> {
     file_path: &'a str,
-    verts: Vec<(f64, f64, f64)>,
+    verts: Vec<Vector3<f64>>,
     faces: Vec<Vec<usize>>,
 }
 
@@ -24,13 +26,14 @@ impl<'a> Model<'a> {
         for line in file.lines() {
             let l = line.unwrap();
             let mut l = l.split_whitespace();
+
             match l.nth(0) {
                 Some("v") => {
                     let mut vertices = Vec::new();
                     for vert in l {
                         vertices.push(vert.parse::<f64>().expect("Couldn't parse obj file"));
                     }
-                    verts.push((vertices[0], vertices[1], vertices[2]));
+                    verts.push(Vector3::new(vertices[0], vertices[1], vertices[2]));
                 }
 
                 Some("f") => {
@@ -58,7 +61,7 @@ impl<'a> Model<'a> {
         }
     }
 
-    pub fn verts(&self) -> &Vec<(f64, f64, f64)> {
+    pub fn verts(&self) -> &Vec<Vector3<f64>> {
         &self.verts
     }
 
