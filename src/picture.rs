@@ -7,34 +7,23 @@ pub fn render_model((resolution_x, resolution_y): (u32, u32), file_path: &str, m
 
     let verts = model.verts();
     for face in model.faces() {
-        for j in 0..3 {
-            let start = verts[face[j] as usize];
-            let end = verts[face[(j + 1) % 3] as usize];
-
-            let start = (
-                cmp::min(
-                    ((start.0 + 1.0) * resolution_x as f64 / 2.0) as i64,
-                    resolution_x as i64 - 1,
-                ),
-                cmp::min(
-                    ((start.1 + 1.0) * resolution_y as f64 / 2.0) as i64,
-                    resolution_y as i64 - 1,
-                ),
+        let v1 = verts[face[0] as usize];
+        let v1 = (
+            ((v1.0 + 1.0) * resolution_x as f64 / 2.0) as i64,
+            ((v1.1 + 1.0) * resolution_y as f64 / 2.0) as i64,
+            );
+        let v2 = verts[face[1] as usize];
+        let v2 = (
+            ((v2.0 + 1.0) * resolution_x as f64 / 2.0) as i64,
+            ((v2.1 + 1.0) * resolution_y as f64 / 2.0) as i64,
+            );
+        let v3 = verts[face[2] as usize];
+        let v3 = (
+            ((v3.0 + 1.0) * resolution_x as f64 / 2.0) as i64,
+            ((v3.1 + 1.0) * resolution_y as f64 / 2.0) as i64,
             );
 
-            let end = (
-                cmp::min(
-                    ((end.0 + 1.0) * resolution_x as f64 / 2.0) as i64,
-                    resolution_x as i64 - 1,
-                ),
-                cmp::min(
-                    ((end.1 + 1.0) * resolution_y as f64 / 2.0) as i64,
-                    resolution_y as i64 - 1,
-                ),
-            );
-
-            line(start, end, &mut image_buffer, (255, 255, 255));
-        }
+        triangle(v1, v2, v3, &mut image_buffer, (255, 255, 255));
     }
 
     image_buffer = image::imageops::flip_vertical(&image_buffer);
@@ -87,5 +76,64 @@ fn line(start: (i64, i64), end: (i64, i64), image: &mut image::RgbImage, color: 
             y += if y2 > y1 { 1 } else { -1 };
             error -= dx * 2;
         }
+    }
+}
+
+fn triangle(
+    v1: (i64, i64),
+    v2: (i64, i64),
+    v3: (i64, i64),
+    image: &mut image::RgbImage,
+    color: (u8, u8, u8),
+) {
+    let x_min = cmp::min(cmp::min(cmp::min(0, v1.0), v2.0), v3.0) as i64;
+    let x_max = cmp::max(
+        cmp::max(cmp::max(image.width() as i64 - 1, v1.0), v2.0),
+        v3.0,
+    );
+    let y_min = cmp::min(cmp::min(cmp::min(0, v1.1), v2.1), v3.1) as i64;
+    let y_max = cmp::max(
+        cmp::max(cmp::max(image.height() as i64 - 1, v1.1), v2.1),
+        v3.1,
+    );
+
+    for x in x_min..x_max {
+        for y in y_min..y_max {
+            if is_point_in_triangle(v1, v2, v3, (x, y)) {
+                image.put_pixel(x as u32, y as u32, image::Rgb([color.0, color.1, color.2]))
+            }
+        }
+    }
+}
+
+fn is_point_in_triangle(v1: (i64, i64), v2: (i64, i64), v3: (i64, i64), point: (i64, i64)) -> bool {
+    let vec1 = (
+        v3.0 as f64 - v1.0 as f64,
+        v2.0 as f64 - v1.0 as f64,
+        v1.0 as f64 - point.0 as f64,
+    );
+
+    let vec2 = (
+        v3.1 as f64 - v1.1 as f64,
+        v2.1 as f64 - v1.1 as f64,
+        v1.1 as f64 - point.1 as f64,
+    );
+
+    let u = (
+        vec1.1 * vec2.2 - vec1.2 * vec2.1, // X = YZ-ZY
+        vec1.2 * vec2.0 - vec1.0 * vec2.2, // Y = ZX-XZ
+        vec1.0 * vec2.1 - vec1.1 * vec2.0, // Z = XY-YX
+    );
+
+    if u.2.abs() < 1.0 {
+        return false;
+    }
+
+    let barycentric = (1.0 - (u.0 + u.1) / u.2, u.1 / u.2, u.0 / u.2);
+
+    if barycentric.0 < 0.0 || barycentric.1 < 0.0 || barycentric.2 < 0.0 {
+        false
+    } else {
+        true
     }
 }
