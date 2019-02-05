@@ -8,7 +8,7 @@ use regex::Regex;
 pub struct Model<'a> {
     file_path: &'a str,
     verts: Vec<(f64, f64, f64)>,
-    faces: Vec<Vec<i64>>,
+    faces: Vec<Vec<usize>>,
 }
 
 impl<'a> Model<'a> {
@@ -42,7 +42,7 @@ impl<'a> Model<'a> {
                             .get(1)
                             .map_or("", |m| m.as_str());
 
-                        vertices.push(v.parse::<i64>().expect("Couldn't parse obj file") - 1);
+                        vertices.push(v.parse::<usize>().expect("Couldn't parse obj file") - 1);
                     }
                     faces.push(vertices);
                 }
@@ -62,7 +62,7 @@ impl<'a> Model<'a> {
         &self.verts
     }
 
-    pub fn faces(&self) -> &Vec<Vec<i64>> {
+    pub fn faces(&self) -> &Vec<Vec<usize>> {
         &self.faces
     }
 }
