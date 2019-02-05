@@ -1,7 +1,5 @@
 use std::cmp;
 
-use cgmath::{Vector2, Vector3};
-
 use crate::model::Model;
 
 pub fn render_model((resolution_x, resolution_y): (u32, u32), file_path: &str, model: &Model) {
@@ -10,13 +8,20 @@ pub fn render_model((resolution_x, resolution_y): (u32, u32), file_path: &str, m
     let verts = model.verts();
     for face in model.faces() {
         let v1 = verts[face[0] as usize];
-        let v1: Vector2<i64> = (resolution_x as f64 / 2.0 * (v1.xy() + Vector2::new(1.0, 1.0))).cast().unwrap();
-
+        let v1 = (
+            ((v1.0 + 1.0) * resolution_x as f64 / 2.0) as i64,
+            ((v1.1 + 1.0) * resolution_y as f64 / 2.0) as i64,
+            );
         let v2 = verts[face[1] as usize];
-        let v2: Vector2<i64> = (resolution_x as f64 / 2.0 * (v2.xy() + Vector2::new(1.0, 1.0))).cast().unwrap();
-
+        let v2 = (
+            ((v2.0 + 1.0) * resolution_x as f64 / 2.0) as i64,
+            ((v2.1 + 1.0) * resolution_y as f64 / 2.0) as i64,
+            );
         let v3 = verts[face[2] as usize];
-        let v3: Vector2<i64> = (resolution_x as f64 / 2.0 * (v3.xy() + Vector2::new(1.0, 1.0))).cast().unwrap();
+        let v3 = (
+            ((v3.0 + 1.0) * resolution_x as f64 / 2.0) as i64,
+            ((v3.1 + 1.0) * resolution_y as f64 / 2.0) as i64,
+            );
 
         triangle(v1, v2, v3, &mut image_buffer, (255, 255, 255));
     }
@@ -75,40 +80,58 @@ fn line(start: (i64, i64), end: (i64, i64), image: &mut image::RgbImage, color: 
 }
 
 fn triangle(
-    v1: Vector2<i64>,
-    v2: Vector2<i64>,
-    v3: Vector2<i64>,
+    v1: (i64, i64),
+    v2: (i64, i64),
+    v3: (i64, i64),
     image: &mut image::RgbImage,
     color: (u8, u8, u8),
 ) {
-    let x_min = cmp::min(cmp::min(cmp::min(0, v1.x), v2.x), v3.x) as i64;
-    let x_max = cmp::max(cmp::max(cmp::max(image.width() as i64 - 1, v1.x), v2.x), v3.x);
-
-    let y_min = cmp::min(cmp::min(cmp::min(0, v1.y), v2.y), v3.y) as i64;
-    let y_max = cmp::max(cmp::max(cmp::max(image.height() as i64 - 1, v1.y), v2.y), v3.y);
+    let x_min = cmp::min(cmp::min(cmp::min(0, v1.0), v2.0), v3.0) as i64;
+    let x_max = cmp::max(
+        cmp::max(cmp::max(image.width() as i64 - 1, v1.0), v2.0),
+        v3.0,
+    );
+    let y_min = cmp::min(cmp::min(cmp::min(0, v1.1), v2.1), v3.1) as i64;
+    let y_max = cmp::max(
+        cmp::max(cmp::max(image.height() as i64 - 1, v1.1), v2.1),
+        v3.1,
+    );
 
     for x in x_min..x_max {
         for y in y_min..y_max {
-            if is_point_in_triangle(v1, v2, v3, Vector2::new(x, y)) {
+            if is_point_in_triangle(v1, v2, v3, (x, y)) {
                 image.put_pixel(x as u32, y as u32, image::Rgb([color.0, color.1, color.2]))
             }
         }
     }
 }
 
-fn is_point_in_triangle(v1: Vector2<i64>, v2: Vector2<i64>, v3: Vector2<i64>, point: Vector2<i64>) -> bool {
-    let vec1 = Vector3::new(v3.x - v1.x, v2.x - v1.x, v1.x - point.x);
-    let vec2 = Vector3::new(v3.y - v1.y, v2.y - v1.y, v1.y - point.y);
+fn is_point_in_triangle(v1: (i64, i64), v2: (i64, i64), v3: (i64, i64), point: (i64, i64)) -> bool {
+    let vec1 = (
+        v3.0 as f64 - v1.0 as f64,
+        v2.0 as f64 - v1.0 as f64,
+        v1.0 as f64 - point.0 as f64,
+    );
 
-    let u = vec1.cross(vec2);
+    let vec2 = (
+        v3.1 as f64 - v1.1 as f64,
+        v2.1 as f64 - v1.1 as f64,
+        v1.1 as f64 - point.1 as f64,
+    );
 
-    if u.z.abs() < 1 {
+    let u = (
+        vec1.1 * vec2.2 - vec1.2 * vec2.1, // X = YZ-ZY
+        vec1.2 * vec2.0 - vec1.0 * vec2.2, // Y = ZX-XZ
+        vec1.0 * vec2.1 - vec1.1 * vec2.0, // Z = XY-YX
+    );
+
+    if u.2.abs() < 1.0 {
         return false;
     }
 
-    let barycentric: Vector3<f64> = Vector3::new(1 - (u.x + u.y) / u.z, u.y / u.z, u.x / u.z).cast().unwrap();
+    let barycentric = (1.0 - (u.0 + u.1) / u.2, u.1 / u.2, u.0 / u.2);
 
-    if barycentric.x < 0.0 || barycentric.y < 0.0 || barycentric.z < 0.0 {
+    if barycentric.0 < 0.0 || barycentric.1 < 0.0 || barycentric.2 < 0.0 {
         false
     } else {
         true
