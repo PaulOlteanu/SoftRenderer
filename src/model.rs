@@ -3,11 +3,12 @@ use std::io::BufRead;
 use std::io::BufReader;
 
 use regex::Regex;
+use cgmath::Vector3;
 
 #[derive(Debug)]
 pub struct Model<'a> {
     file_path: &'a str,
-    verts: Vec<(f64, f64, f64)>,
+    verts: Vec<Vector3<f64>>,
     faces: Vec<Vec<i64>>,
 }
 
@@ -30,7 +31,7 @@ impl<'a> Model<'a> {
                     for vert in l {
                         vertices.push(vert.parse::<f64>().expect("Couldn't parse obj file"));
                     }
-                    verts.push((vertices[0], vertices[1], vertices[2]));
+                    verts.push(Vector3::new(vertices[0], vertices[1], vertices[2]));
                 }
 
                 Some("f") => {
@@ -58,7 +59,7 @@ impl<'a> Model<'a> {
         }
     }
 
-    pub fn verts(&self) -> &Vec<(f64, f64, f64)> {
+    pub fn verts(&self) -> &Vec<Vector3<f64>> {
         &self.verts
     }
 
