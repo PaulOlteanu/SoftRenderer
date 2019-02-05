@@ -1,6 +1,6 @@
 use std::cmp;
 
-use cgmath::{Vector2, Vector3, Matrix2};
+use cgmath::{Vector2, Vector3, Matrix2, Matrix3, InnerSpace};
 
 use crate::model::Model;
 
@@ -9,18 +9,31 @@ pub fn render_model((resolution_x, resolution_y): (u32, u32), file_path: &str, m
 
     let verts = model.verts();
 
+    let mut z_buffer: Vec<Vec<f64>> = vec![vec![-1.0/0.0; resolution_y as usize]; resolution_x as usize];
+
     let half_width = resolution_x as f64 / 2.0;
     let half_height = resolution_y as f64 / 2.0;
 
-    let coordinate_transform_matrix = Matrix2::new(half_width, 0.0, 0.0, half_height);
-    let increment = Vector2::new(1.0, 1.0);
+    let coordinate_transform_matrix = Matrix3::new(half_width, 0.0, 0.0, 0.0, half_height, 0.0, 0.0, 0.0, 1.0);
+    let increment = Vector3::new(1.0, 1.0, 1.0);
+
+    let light_direction = Vector3::new(0.0, 0.0, -1.0);
 
     for face in model.faces() {
-        let v1: Vector2<u32> = (coordinate_transform_matrix * (verts[face[0]].xy() + increment)).cast().unwrap();
-        let v2: Vector2<u32> = (coordinate_transform_matrix * (verts[face[1]].xy() + increment)).cast().unwrap();
-        let v3: Vector2<u32> = (coordinate_transform_matrix * (verts[face[2]].xy() + increment)).cast().unwrap();
+        let v1: Vector3<u32> = (coordinate_transform_matrix * (verts[face[0]] + increment)).cast().unwrap();
+        let v2: Vector3<u32> = (coordinate_transform_matrix * (verts[face[1]] + increment)).cast().unwrap();
+        let v3: Vector3<u32> = (coordinate_transform_matrix * (verts[face[2]] + increment)).cast().unwrap();
 
-        triangle(v1, v2, v3, &mut image_buffer, image::Rgb([255, 255, 255]));
+        // Triangles are defined counterclockwise to be forward facing
+        // The sides chosen and the order of the cross product are important here because of this
+        // Here the norm is actually backward-facing,
+        // Which allows the intensity to just be the dot product rather than the absolute value of the dot product
+        let norm = (verts[face[2]] - verts[face[0]]).cross(verts[face[1]] - verts[face[0]]).normalize();
+        let intensity = norm.dot(light_direction);
+        if intensity > 0.0 {
+            // triangle(v1, v2, v3, &mut z_buffer, &mut image_buffer, image::Rgb([(intensity.powf(0.4545) * 255.0) as u8, (intensity.powf(0.4545) * 255.0) as u8, (intensity.powf(0.4545) * 255.0) as u8]));
+            triangle(v1, v2, v3, &mut z_buffer, &mut image_buffer, image::Rgb([(intensity * 255.0) as u8, (intensity * 255.0) as u8, (intensity * 255.0) as u8]));
+        }
     }
 
     image_buffer = image::imageops::flip_vertical(&image_buffer);
@@ -77,9 +90,10 @@ fn line(start: (i64, i64), end: (i64, i64), image: &mut image::RgbImage, color: 
 }
 
 fn triangle(
-    v1: Vector2<u32>,
-    v2: Vector2<u32>,
-    v3: Vector2<u32>,
+    v1: Vector3<u32>,
+    v2: Vector3<u32>,
+    v3: Vector3<u32>,
+    z_buf: &mut Vec<Vec<f64>>,
     image: &mut image::RgbImage,
     color: image::Rgb<u8>,
 ) {
@@ -91,14 +105,33 @@ fn triangle(
 
     for x in x_min..x_max {
         for y in y_min..y_max {
-            if is_point_in_triangle(v1, v2, v3, Vector2::new(x, y)) {
-                image.put_pixel(x as u32, y as u32, color)
+            let current_point = Vector2::new(x, y);
+            if is_point_in_triangle(v1.xy(), v2.xy(), v3.xy(), current_point) {
+                // P.z = 0;
+                // for (int i=0; i<3; i++) P.z += pts[i][2]*bc_screen[i];
+                // if (zbuffer[int(P.x+P.y*width)]<P.z) {
+                //     zbuffer[int(P.x+P.y*width)] = P.z;
+                //     image.set(P.x, P.y, color);
+                // }
+
+                let barycentric = cartesian_to_barycentric(v1.xy(), v2.xy(), v3.xy(), current_point);
+
+                let z = v1.z as f64 * barycentric.x + v2.z as f64 * barycentric.y + v3.z as f64 * barycentric.z;
+                if z_buf[x as usize][y as usize] < z {
+                    z_buf[x as usize][y as usize] = z;
+                    image.put_pixel(x as u32, y as u32, color)
+                }
             }
         }
     }
 }
 
-fn is_point_in_triangle(v1: (Vector2<u32>), v2: (Vector2<u32>), v3: (Vector2<u32>), point: (Vector2<u32>)) -> bool {
+fn is_point_in_triangle(v1: Vector2<u32>, v2: Vector2<u32>, v3: Vector2<u32>, point: Vector2<u32>) -> bool {
+    let barycentric = cartesian_to_barycentric(v1, v2, v3, point);
+    !(barycentric.x < 0.0 || barycentric.y < 0.0 || barycentric.z < 0.0)
+}
+
+fn cartesian_to_barycentric(v1: Vector2<u32>, v2: Vector2<u32>, v3: Vector2<u32>, point: Vector2<u32>) -> Vector3<f64> {
     let v1: Vector2<i32> = v1.cast().unwrap();
     let v2: Vector2<i32> = v2.cast().unwrap();
     let v3: Vector2<i32> = v3.cast().unwrap();
@@ -109,13 +142,9 @@ fn is_point_in_triangle(v1: (Vector2<u32>), v2: (Vector2<u32>), v3: (Vector2<u32
     let u = vec1.cross(vec2);
 
     if u.z.abs() < 1 {
-        return false;
+        // Doesn't matter what this is as long as one value is negative
+        return Vector3::new(0.0, 0.0, -1.0);
     }
 
-    let barycentric = (1.0 - (u.x + u.y) as f64 / u.z as f64, u.y as f64 / u.z as f64, u.x as f64 / u.z as f64);
-    if barycentric.0 < 0.0 || barycentric.1 < 0.0 || barycentric.2 < 0.0 {
-        false
-    } else {
-        true
-    }
+    Vector3::new(1.0 - (u.x + u.y) as f64 / u.z as f64, u.y as f64 / u.z as f64, u.x as f64 / u.z as f64)
 }
