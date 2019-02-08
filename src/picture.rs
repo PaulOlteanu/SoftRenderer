@@ -1,6 +1,6 @@
 use std::cmp;
 
-use cgmath::{Vector2, Vector3, Matrix2, Matrix3, InnerSpace};
+use cgmath::{Vector2, Vector3, Matrix2, InnerSpace};
 
 use crate::model::Model;
 
@@ -14,15 +14,24 @@ pub fn render_model((resolution_x, resolution_y): (u32, u32), file_path: &str, m
     let half_width = resolution_x as f64 / 2.0;
     let half_height = resolution_y as f64 / 2.0;
 
-    let coordinate_transform_matrix = Matrix3::new(half_width, 0.0, 0.0, 0.0, half_height, 0.0, 0.0, 0.0, 1.0);
+    let coordinate_transform_matrix = Matrix2::new(half_width, 0.0, 0.0, half_height);
     let increment = Vector3::new(1.0, 1.0, 1.0);
 
     let light_direction = Vector3::new(0.0, 0.0, -1.0);
 
     for face in model.faces() {
-        let v1: Vector3<u32> = (coordinate_transform_matrix * (verts[face[0]] + increment)).cast().unwrap();
-        let v2: Vector3<u32> = (coordinate_transform_matrix * (verts[face[1]] + increment)).cast().unwrap();
-        let v3: Vector3<u32> = (coordinate_transform_matrix * (verts[face[2]] + increment)).cast().unwrap();
+        let v1: (Vector2<u32>, f64) = (
+            (coordinate_transform_matrix * (verts[face[0]] + increment).xy()).cast().unwrap(),
+            (verts[face[0]] + increment).z
+        );
+        let v2: (Vector2<u32>, f64) = (
+            (coordinate_transform_matrix * (verts[face[1]] + increment).xy()).cast().unwrap(),
+            (verts[face[1]] + increment).z
+        );
+        let v3: (Vector2<u32>, f64) = (
+            (coordinate_transform_matrix * (verts[face[2]] + increment).xy()).cast().unwrap(),
+            (verts[face[2]] + increment).z
+        );
 
         // Triangles are defined counterclockwise to be forward facing
         // The sides chosen and the order of the cross product are important here because of this
@@ -90,13 +99,20 @@ fn line(start: (i64, i64), end: (i64, i64), image: &mut image::RgbImage, color: 
 }
 
 fn triangle(
-    v1: Vector3<u32>,
-    v2: Vector3<u32>,
-    v3: Vector3<u32>,
+    v1: (Vector2<u32>, f64),
+    v2: (Vector2<u32>, f64),
+    v3: (Vector2<u32>, f64),
     z_buf: &mut Vec<Vec<f64>>,
     image: &mut image::RgbImage,
     color: image::Rgb<u8>,
 ) {
+    // This is a bit of a hack for now, but we need to keep the z coordinate in normalized form, while the others are screen coordinates
+    let v1_z = v1.1;
+    let v1 = v1.0;
+    let v2_z = v2.1;
+    let v2 = v2.0;
+    let v3_z = v3.1;
+    let v3 = v3.0;
     let x_min = cmp::max(0, cmp::min(cmp::min(v1.x, v2.x), v3.x));
     let x_max = cmp::min(image.width() - 1, cmp::max(cmp::max(v1.x, v2.x), v3.x));
 
@@ -107,16 +123,11 @@ fn triangle(
         for y in y_min..y_max {
             let current_point = Vector2::new(x, y);
             if is_point_in_triangle(v1.xy(), v2.xy(), v3.xy(), current_point) {
-                // P.z = 0;
-                // for (int i=0; i<3; i++) P.z += pts[i][2]*bc_screen[i];
-                // if (zbuffer[int(P.x+P.y*width)]<P.z) {
-                //     zbuffer[int(P.x+P.y*width)] = P.z;
-                //     image.set(P.x, P.y, color);
-                // }
-
                 let barycentric = cartesian_to_barycentric(v1.xy(), v2.xy(), v3.xy(), current_point);
 
-                let z = v1.z as f64 * barycentric.x + v2.z as f64 * barycentric.y + v3.z as f64 * barycentric.z;
+                // Interpolate z value across vertices
+                let z = v1_z as f64 * barycentric.x + v2_z as f64 * barycentric.y + v3_z as f64 * barycentric.z;
+
                 if z_buf[x as usize][y as usize] < z {
                     z_buf[x as usize][y as usize] = z;
                     image.put_pixel(x as u32, y as u32, color)
