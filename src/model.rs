@@ -4,13 +4,25 @@ use std::io::BufReader;
 
 use cgmath::Vector3;
 
-use regex::Regex;
+use regex::{Captures, Regex};
+
+#[derive(Debug)]
+pub struct FaceData {
+    pub vertices: (usize, usize, usize),
+    pub textures: (usize, usize, usize),
+    pub normals: (usize, usize, usize),
+}
 
 #[derive(Debug)]
 pub struct Model<'a> {
     file_path: &'a str,
     verts: Vec<Vector3<f64>>,
-    faces: Vec<Vec<usize>>,
+    texture_verts: Vec<Vector3<f64>>,
+    normal_verts: Vec<Vector3<f64>>,
+
+    // (VertexIndex, VertexTextureIndex, VertexNormalIndex)
+    faces: Vec<FaceData>,
+    pub texture: image::RgbImage,
 }
 
 impl<'a> Model<'a> {
@@ -19,9 +31,11 @@ impl<'a> Model<'a> {
         let file = BufReader::new(&f);
 
         let mut verts = Vec::new();
+        let mut texture_verts = Vec::new();
+        let mut normal_verts = Vec::new();
         let mut faces = Vec::new();
 
-        let face_regex = Regex::new(r"(\d+)(?:/\d+)+").unwrap();
+        let face_regex = Regex::new(r"(\d+)/(\d+)/(\d+)").unwrap();
 
         for line in file.lines() {
             let l = line.unwrap();
@@ -29,35 +43,64 @@ impl<'a> Model<'a> {
 
             match l.nth(0) {
                 Some("v") => {
-                    let mut vertices = Vec::new();
-                    for vert in l {
-                        vertices.push(vert.parse::<f64>().expect("Couldn't parse obj file"));
-                    }
-                    verts.push(Vector3::new(vertices[0], vertices[1], vertices[2]));
+                    let mut coordinates = l.map(move |x| x.parse::<f64>().unwrap());
+                    verts.push(Vector3::new(
+                        coordinates.next().unwrap(),
+                        coordinates.next().unwrap(),
+                        coordinates.next().unwrap(),
+                    ));
+                }
+
+                Some("vt") => {
+                    let mut coordinates = l.map(move |x| x.parse::<f64>().unwrap());
+                    texture_verts.push(Vector3::new(
+                        coordinates.next().unwrap(),
+                        coordinates.next().unwrap(),
+                        coordinates.next().unwrap(),
+                    ));
+                }
+
+                Some("vn") => {
+                    let mut coordinates = l.map(move |x| x.parse::<f64>().unwrap());
+                    normal_verts.push(Vector3::new(
+                        coordinates.next().unwrap(),
+                        coordinates.next().unwrap(),
+                        coordinates.next().unwrap(),
+                    ));
                 }
 
                 Some("f") => {
-                    let mut vertices = Vec::new();
-                    for vert in l {
-                        let v = face_regex
-                            .captures(vert)
-                            .unwrap()
-                            .get(1)
-                            .map_or("", |m| m.as_str());
+                    let mut face_verts = Vec::new();
 
-                        vertices.push(v.parse::<usize>().expect("Couldn't parse obj file") - 1);
+                    for vert in l {
+                        let vert_match =
+                            face_regex.captures(vert).expect("Couldn't parse obj file");
+                        face_verts.push(Self::parse_face(vert_match));
                     }
-                    faces.push(vertices);
+
+                    let face_data = FaceData {
+                        vertices: (face_verts[0].0, face_verts[1].0, face_verts[2].0),
+                        textures: (face_verts[0].1, face_verts[1].1, face_verts[2].1),
+                        normals: (face_verts[0].2, face_verts[1].2, face_verts[2].2),
+                    };
+
+                    faces.push(face_data);
                 }
 
                 _x => {}
             }
         }
 
+        // TODO: Un-hardcode the filepath
+        let texture = image::open("test_model.tga").unwrap().to_rgb();
+
         Self {
             file_path,
             verts,
+            texture_verts,
+            normal_verts,
             faces,
+            texture,
         }
     }
 
@@ -65,7 +108,30 @@ impl<'a> Model<'a> {
         &self.verts
     }
 
-    pub fn faces(&self) -> &Vec<Vec<usize>> {
+    pub fn faces(&self) -> &Vec<FaceData> {
         &self.faces
+    }
+
+    fn parse_face(capture: Captures) -> (usize, usize, usize) {
+        (
+            capture
+                .get(1)
+                .map_or("", |m| m.as_str())
+                .parse::<usize>()
+                .expect("Couldn't parse obj file")
+                - 1,
+            capture
+                .get(2)
+                .map_or("", |m| m.as_str())
+                .parse::<usize>()
+                .expect("Couldn't parse obj file")
+                - 1,
+            capture
+                .get(3)
+                .map_or("", |m| m.as_str())
+                .parse::<usize>()
+                .expect("Couldn't parse obj file")
+                - 1,
+        )
     }
 }
