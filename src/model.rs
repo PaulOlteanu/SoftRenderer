@@ -15,7 +15,8 @@ pub struct FaceData {
 
 #[derive(Debug)]
 pub struct Model<'a> {
-    file_path: &'a str,
+    model_file_path: &'a str,
+    texture_file_path: &'a str,
     verts: Vec<Vector3<f64>>,
     texture_verts: Vec<Vector3<f64>>,
     normal_verts: Vec<Vector3<f64>>,
@@ -26,8 +27,8 @@ pub struct Model<'a> {
 }
 
 impl<'a> Model<'a> {
-    pub fn new(file_path: &'a str) -> Self {
-        let f = File::open(file_path).expect("Couldn't open obj file");
+    pub fn new(model_file_path: &'a str, texture_file_path: &'a str) -> Self {
+        let f = File::open(model_file_path).expect("Couldn't open obj file");
         let file = BufReader::new(&f);
 
         let mut verts = Vec::new();
@@ -75,7 +76,7 @@ impl<'a> Model<'a> {
                     for vert in l {
                         let vert_match =
                             face_regex.captures(vert).expect("Couldn't parse obj file");
-                        face_verts.push(Self::parse_face(vert_match));
+                        face_verts.push(Self::parse_face(&vert_match));
                     }
 
                     let face_data = FaceData {
@@ -91,11 +92,11 @@ impl<'a> Model<'a> {
             }
         }
 
-        // TODO: Un-hardcode the filepath
-        let texture = image::open("test_model.tga").unwrap().to_rgb();
+        let texture = image::open(texture_file_path).unwrap().to_rgb();
 
         Self {
-            file_path,
+            model_file_path,
+            texture_file_path,
             verts,
             texture_verts,
             normal_verts,
@@ -112,7 +113,7 @@ impl<'a> Model<'a> {
         &self.faces
     }
 
-    fn parse_face(capture: Captures) -> (usize, usize, usize) {
+    fn parse_face(capture: &Captures) -> (usize, usize, usize) {
         (
             capture
                 .get(1)

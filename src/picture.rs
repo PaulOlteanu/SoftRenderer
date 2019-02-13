@@ -1,6 +1,5 @@
-use std::cmp;
-
 use cgmath::{InnerSpace, Matrix2, Vector2, Vector3};
+use image::Pixel;
 
 use crate::model::Model;
 
@@ -9,58 +8,31 @@ pub fn render_model((resolution_x, resolution_y): (u32, u32), file_path: &str, m
 
     let verts = model.verts();
 
+    // -1.0 / 0.0 is -infinity
     let mut z_buffer: Vec<Vec<f64>> =
         vec![vec![-1.0 / 0.0; resolution_y as usize]; resolution_x as usize];
-
-    let half_width = resolution_x as f64 / 2.0;
-    let half_height = resolution_y as f64 / 2.0;
-
-    let coordinate_transform_matrix = Matrix2::new(half_width, 0.0, 0.0, half_height);
-    let increment = Vector3::new(1.0, 1.0, 1.0);
 
     let light_direction = Vector3::new(0.0, 0.0, -1.0);
 
     for face in model.faces() {
-        let v1: (Vector2<u32>, f64) = (
-            (coordinate_transform_matrix * (verts[face.vertices.0] + increment).xy())
-                .cast()
-                .unwrap(),
-            (verts[face.vertices.0] + increment).z,
-        );
-        let v2: (Vector2<u32>, f64) = (
-            (coordinate_transform_matrix * (verts[face.vertices.1] + increment).xy())
-                .cast()
-                .unwrap(),
-            (verts[face.vertices.1] + increment).z,
-        );
-        let v3: (Vector2<u32>, f64) = (
-            (coordinate_transform_matrix * (verts[face.vertices.2] + increment).xy())
-                .cast()
-                .unwrap(),
-            (verts[face.vertices.2] + increment).z,
-        );
-
         // Triangles are defined counterclockwise to be forward facing
         // The sides chosen and the order of the cross product are important here because of this
         // Here the norm is actually backward-facing,
-        // Which allows the intensity to just be the dot product rather than the absolute value of the dot product
+        // which allows the intensity to just be the dot product rather than the absolute value of the dot product
         let norm = (verts[face.vertices.2] - verts[face.vertices.0])
             .cross(verts[face.vertices.1] - verts[face.vertices.0])
             .normalize();
         let intensity = norm.dot(light_direction);
+
         if intensity > 0.0 {
-            // triangle(v1, v2, v3, &mut z_buffer, &mut image_buffer, image::Rgb([(intensity.powf(0.4545) * 255.0) as u8, (intensity.powf(0.4545) * 255.0) as u8, (intensity.powf(0.4545) * 255.0) as u8]));
             triangle(
-                v1,
-                v2,
-                v3,
+                verts[face.vertices.0],
+                verts[face.vertices.1],
+                verts[face.vertices.2],
                 &mut z_buffer,
                 &mut image_buffer,
-                image::Rgb([
-                    (intensity * 255.0) as u8,
-                    (intensity * 255.0) as u8,
-                    (intensity * 255.0) as u8,
-                ]),
+                intensity,
+                &model,
             );
         }
     }
@@ -101,7 +73,7 @@ fn line(start: (i64, i64), end: (i64, i64), image: &mut image::RgbImage, color: 
     let mut error = 0;
     let mut y = y1;
 
-    for x in x1..x2 + 1 {
+    for x in x1..=x2 {
         if steep {
             // Unswap x and y
             image.put_pixel(y as u32, x as u32, color);
@@ -119,41 +91,66 @@ fn line(start: (i64, i64), end: (i64, i64), image: &mut image::RgbImage, color: 
 }
 
 fn triangle(
-    v1: (Vector2<u32>, f64),
-    v2: (Vector2<u32>, f64),
-    v3: (Vector2<u32>, f64),
+    v1: Vector3<f64>,
+    v2: Vector3<f64>,
+    v3: Vector3<f64>,
     z_buf: &mut Vec<Vec<f64>>,
     image: &mut image::RgbImage,
-    color: image::Rgb<u8>,
+    intensity: f64,
+    model: &Model,
 ) {
-    // This is a bit of a hack for now, but we need to keep the z coordinate in normalized form, while the others are screen coordinates
-    let v1_z = v1.1;
-    let v1 = v1.0;
-    let v2_z = v2.1;
-    let v2 = v2.0;
-    let v3_z = v3.1;
-    let v3 = v3.0;
-    let x_min = cmp::max(0, cmp::min(cmp::min(v1.x, v2.x), v3.x));
-    let x_max = cmp::min(image.width() - 1, cmp::max(cmp::max(v1.x, v2.x), v3.x));
+    let coordinate_transform_matrix = Matrix2::new(
+        f64::from(image.width()) / 2.0,
+        0.0,
+        0.0,
+        f64::from(image.height()) / 2.0,
+    );
 
-    let y_min = cmp::min(cmp::min(v1.y, v2.y), v3.y);
-    let y_max = cmp::max(cmp::max(v1.y, v2.y), v3.y);
+    let increment = Vector3::new(1.0, 1.0, 1.0);
+
+    let v1_screen: Vector2<u32> = (coordinate_transform_matrix * (v1 + increment).xy())
+        .cast()
+        .unwrap();
+
+    let v2_screen: Vector2<u32> = (coordinate_transform_matrix * (v2 + increment).xy())
+        .cast()
+        .unwrap();
+
+    let v3_screen: Vector2<u32> = (coordinate_transform_matrix * (v3 + increment).xy())
+        .cast()
+        .unwrap();
+
+    let x_min = v1_screen.x.min(v2_screen.x).min(v3_screen.x).max(0);
+    let x_max = v1_screen
+        .x
+        .max(v2_screen.x)
+        .max(v3_screen.x)
+        .min(image.width() - 1);
+
+    let y_min = v1_screen.y.min(v2_screen.y).min(v3_screen.y).max(0);
+    let y_max = v1_screen
+        .y
+        .max(v2_screen.y)
+        .max(v3_screen.y)
+        .min(image.height() - 1);
 
     for x in x_min..x_max {
         for y in y_min..y_max {
             let current_point = Vector2::new(x, y);
-            if is_point_in_triangle(v1.xy(), v2.xy(), v3.xy(), current_point) {
-                let barycentric =
-                    cartesian_to_barycentric(v1.xy(), v2.xy(), v3.xy(), current_point);
+            if is_point_in_triangle(v1_screen, v2_screen, v3_screen, current_point) {
+                let barycentric = cartesian_to_barycentric(v1_screen, v2_screen, v3_screen, current_point);
 
                 // Interpolate z value across vertices
-                let z = v1_z as f64 * barycentric.x
-                    + v2_z as f64 * barycentric.y
-                    + v3_z as f64 * barycentric.z;
+                let z = v1.z * barycentric.x + v2.z * barycentric.y + v3.z * barycentric.z;
 
                 if z_buf[x as usize][y as usize] < z {
                     z_buf[x as usize][y as usize] = z;
-                    image.put_pixel(x as u32, y as u32, color)
+
+                    let color = get_texture_color(x as f64 / image.width() as f64, 1.0 - y as f64 / image.height() as f64, model).map(|x| {
+                        (intensity * x as f64) as u8
+                    });
+
+                    image.put_pixel(x as u32, y as u32, color);
                 }
             }
         }
@@ -191,8 +188,12 @@ fn cartesian_to_barycentric(
     }
 
     Vector3::new(
-        1.0 - (u.x + u.y) as f64 / u.z as f64,
-        u.y as f64 / u.z as f64,
-        u.x as f64 / u.z as f64,
+        1.0 - f64::from(u.x + u.y) / f64::from(u.z),
+        f64::from(u.y) / f64::from(u.z),
+        f64::from(u.x) / f64::from(u.z),
     )
+}
+
+fn get_texture_color(x: f64, y: f64, model: &Model) -> image::Rgb<u8> {
+    model.texture.get_pixel((x * model.texture.width() as f64) as u32, (y * model.texture.height() as f64) as u32 - 1).to_rgb()
 }
