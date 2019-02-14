@@ -7,6 +7,8 @@ pub fn render_model((resolution_x, resolution_y): (u32, u32), file_path: &str, m
     let mut image_buffer = image::RgbImage::new(resolution_x, resolution_y);
 
     let verts = model.verts();
+    let texture_verts = model.texture_verts();
+    let normal_verts = model.normal_verts();
 
     // -1.0 / 0.0 is -infinity
     let mut z_buffer: Vec<Vec<f64>> =
@@ -29,6 +31,9 @@ pub fn render_model((resolution_x, resolution_y): (u32, u32), file_path: &str, m
                 verts[face.vertices.0],
                 verts[face.vertices.1],
                 verts[face.vertices.2],
+                texture_verts[face.textures.0],
+                texture_verts[face.textures.1],
+                texture_verts[face.textures.2],
                 &mut z_buffer,
                 &mut image_buffer,
                 intensity,
@@ -94,6 +99,9 @@ fn triangle(
     v1: Vector3<f64>,
     v2: Vector3<f64>,
     v3: Vector3<f64>,
+    vt1: Vector3<f64>,
+    vt2: Vector3<f64>,
+    vt3: Vector3<f64>,
     z_buf: &mut Vec<Vec<f64>>,
     image: &mut image::RgbImage,
     intensity: f64,
@@ -140,13 +148,17 @@ fn triangle(
             if is_point_in_triangle(v1_screen, v2_screen, v3_screen, current_point) {
                 let barycentric = cartesian_to_barycentric(v1_screen, v2_screen, v3_screen, current_point);
 
-                // Interpolate z value across vertices
+                // Interpolate z value across triangle
                 let z = v1.z * barycentric.x + v2.z * barycentric.y + v3.z * barycentric.z;
+
+                // Interpolate uv coordinates across triangle
+                let u = vt1.x * barycentric.x + vt2.x * barycentric.y + vt3.x * barycentric.z;
+                let v = vt1.y * barycentric.x + vt2.y * barycentric.y + vt3.y * barycentric.z;
 
                 if z_buf[x as usize][y as usize] < z {
                     z_buf[x as usize][y as usize] = z;
 
-                    let color = get_texture_color(x as f64 / image.width() as f64, 1.0 - y as f64 / image.height() as f64, model).map(|x| {
+                    let color = get_texture_color(u as f64, 1.0 - v as f64, model).map(|x| {
                         (intensity * x as f64) as u8
                     });
 
@@ -194,6 +206,7 @@ fn cartesian_to_barycentric(
     )
 }
 
+// Coordinates must be [0, 1]
 fn get_texture_color(x: f64, y: f64, model: &Model) -> image::Rgb<u8> {
     model.texture.get_pixel((x * model.texture.width() as f64) as u32, (y * model.texture.height() as f64) as u32 - 1).to_rgb()
 }

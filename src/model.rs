@@ -109,6 +109,14 @@ impl<'a> Model<'a> {
         &self.verts
     }
 
+    pub fn texture_verts(&self) -> &Vec<Vector3<f64>> {
+        &self.texture_verts
+    }
+
+    pub fn normal_verts(&self) -> &Vec<Vector3<f64>> {
+        &self.normal_verts
+    }
+
     pub fn faces(&self) -> &Vec<FaceData> {
         &self.faces
     }
