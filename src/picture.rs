@@ -1,4 +1,6 @@
-use cgmath::{InnerSpace, Matrix2, Matrix3, Point2, Point3, Transform, Vector2, Vector3};
+use cgmath::{
+    InnerSpace, Matrix, Matrix4, Point2, Point3, Vector3,
+};
 use image::Pixel;
 
 use crate::model::Model;
@@ -8,7 +10,6 @@ pub fn render_model((resolution_x, resolution_y): (u32, u32), file_path: &str, m
 
     let verts = model.verts();
     let texture_verts = model.texture_verts();
-    let normal_verts = model.normal_verts();
 
     // -1.0 / 0.0 is -infinity
     let mut z_buffer: Vec<Vec<f64>> =
@@ -107,35 +108,45 @@ fn triangle(
     intensity: f64,
     model: &Model,
 ) {
-    let coordinate_transform_matrix = Matrix3::new(
-        f64::from(image.width()) / 2.0,
-        0.0,
-        0.0,
-        0.0,
-        f64::from(image.height()) / 2.0,
-        0.0,
-        0.0,
-        0.0,
-        1.0,
-    );
+    let camera_location = Point3::new(0.0, 0.0, 3.0);
+    let z_buffer_detail = 255.0;
 
-    let increment = Vector3::new(1.0, 1.0, 1.0);
+    let width = f64::from(image.width());
+    let height = f64::from(image.height());
 
-    let v1_screen: Point2<u32> = coordinate_transform_matrix
-        .transform_point(v1 + increment)
-        .xy()
-        .cast()
-        .unwrap();
-    let v2_screen: Point2<u32> = coordinate_transform_matrix
-        .transform_point(v2 + increment)
-        .xy()
-        .cast()
-        .unwrap();
-    let v3_screen: Point2<u32> = coordinate_transform_matrix
-        .transform_point(v3 + increment)
-        .xy()
-        .cast()
-        .unwrap();
+    // These are transposed because Matrix4::new's arguments are opposite to the way matrices are written on paper
+    #[rustfmt::skip]
+    let projection = Matrix4::new(
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, -1.0 / camera_location.z, 1.0,
+    ).transpose();
+
+    #[rustfmt::skip]
+    let model_transform = Matrix4::new(
+        3.0 * width / 8.0, 0.0, 0.0, width / 2.0,
+        0.0, 3.0 * height / 8.0, 0.0, height / 2.0,
+        0.0, 0.0, z_buffer_detail / 2.0, z_buffer_detail / 2.0,
+        0.0, 0.0, 0.0, 1.0
+    ).transpose();
+
+    let v1_screen: Point2<u32> =
+        Point3::from_homogeneous(model_transform * projection * v1.to_homogeneous())
+            .xy()
+            .cast()
+            .unwrap();
+    let v2_screen: Point2<u32> =
+        Point3::from_homogeneous(model_transform * projection * v2.to_homogeneous())
+            .xy()
+            .cast()
+            .unwrap();
+
+    let v3_screen: Point2<u32> =
+        Point3::from_homogeneous(model_transform * projection * v3.to_homogeneous())
+            .xy()
+            .cast()
+            .unwrap();
 
     let x_min = v1_screen.x.min(v2_screen.x).min(v3_screen.x).max(0);
     let x_max = v1_screen
@@ -161,15 +172,15 @@ fn triangle(
                 // Interpolate z value across triangle
                 let z = v1.z * barycentric.x + v2.z * barycentric.y + v3.z * barycentric.z;
 
-                // Interpolate uv coordinates across triangle
-                let u = vt1.x * barycentric.x + vt2.x * barycentric.y + vt3.x * barycentric.z;
-                let v = vt1.y * barycentric.x + vt2.y * barycentric.y + vt3.y * barycentric.z;
-
                 if z_buf[x as usize][y as usize] < z {
                     z_buf[x as usize][y as usize] = z;
 
+                    // Interpolate uv coordinates across triangle
+                    let u = vt1.x * barycentric.x + vt2.x * barycentric.y + vt3.x * barycentric.z;
+                    let v = vt1.y * barycentric.x + vt2.y * barycentric.y + vt3.y * barycentric.z;
+
                     let color = get_texture_color(u as f64, 1.0 - v as f64, model)
-                        .map(|x| (intensity * x as f64) as u8);
+                        .map(|x| (intensity * f64::from(x)) as u8);
 
                     image.put_pixel(x as u32, y as u32, color);
                 }
@@ -220,8 +231,8 @@ fn get_texture_color(x: f64, y: f64, model: &Model) -> image::Rgb<u8> {
     model
         .texture
         .get_pixel(
-            (x * model.texture.width() as f64) as u32,
-            (y * model.texture.height() as f64) as u32 - 1,
+            (x * f64::from(model.texture.width())) as u32,
+            (y * f64::from(model.texture.height())) as u32 - 1,
         )
         .to_rgb()
 }

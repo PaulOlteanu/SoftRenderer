@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
 
-use cgmath::{Point3};
+use cgmath::Point3;
 
 use regex::{Captures, Regex};
 
