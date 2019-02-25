@@ -1,4 +1,4 @@
-use cgmath::{InnerSpace, Matrix2, Vector2, Vector3};
+use cgmath::{InnerSpace, Matrix2, Matrix3, Point2, Point3, Transform, Vector2, Vector3};
 use image::Pixel;
 
 use crate::model::Model;
@@ -96,35 +96,44 @@ fn line(start: (i64, i64), end: (i64, i64), image: &mut image::RgbImage, color: 
 }
 
 fn triangle(
-    v1: Vector3<f64>,
-    v2: Vector3<f64>,
-    v3: Vector3<f64>,
-    vt1: Vector3<f64>,
-    vt2: Vector3<f64>,
-    vt3: Vector3<f64>,
+    v1: Point3<f64>,
+    v2: Point3<f64>,
+    v3: Point3<f64>,
+    vt1: Point3<f64>,
+    vt2: Point3<f64>,
+    vt3: Point3<f64>,
     z_buf: &mut Vec<Vec<f64>>,
     image: &mut image::RgbImage,
     intensity: f64,
     model: &Model,
 ) {
-    let coordinate_transform_matrix = Matrix2::new(
+    let coordinate_transform_matrix = Matrix3::new(
         f64::from(image.width()) / 2.0,
         0.0,
         0.0,
+        0.0,
         f64::from(image.height()) / 2.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
     );
 
     let increment = Vector3::new(1.0, 1.0, 1.0);
 
-    let v1_screen: Vector2<u32> = (coordinate_transform_matrix * (v1 + increment).xy())
+    let v1_screen: Point2<u32> = coordinate_transform_matrix
+        .transform_point(v1 + increment)
+        .xy()
         .cast()
         .unwrap();
-
-    let v2_screen: Vector2<u32> = (coordinate_transform_matrix * (v2 + increment).xy())
+    let v2_screen: Point2<u32> = coordinate_transform_matrix
+        .transform_point(v2 + increment)
+        .xy()
         .cast()
         .unwrap();
-
-    let v3_screen: Vector2<u32> = (coordinate_transform_matrix * (v3 + increment).xy())
+    let v3_screen: Point2<u32> = coordinate_transform_matrix
+        .transform_point(v3 + increment)
+        .xy()
         .cast()
         .unwrap();
 
@@ -144,9 +153,10 @@ fn triangle(
 
     for x in x_min..x_max {
         for y in y_min..y_max {
-            let current_point = Vector2::new(x, y);
+            let current_point = Point2::new(x, y);
             if is_point_in_triangle(v1_screen, v2_screen, v3_screen, current_point) {
-                let barycentric = cartesian_to_barycentric(v1_screen, v2_screen, v3_screen, current_point);
+                let barycentric =
+                    cartesian_to_barycentric(v1_screen, v2_screen, v3_screen, current_point);
 
                 // Interpolate z value across triangle
                 let z = v1.z * barycentric.x + v2.z * barycentric.y + v3.z * barycentric.z;
@@ -158,9 +168,8 @@ fn triangle(
                 if z_buf[x as usize][y as usize] < z {
                     z_buf[x as usize][y as usize] = z;
 
-                    let color = get_texture_color(u as f64, 1.0 - v as f64, model).map(|x| {
-                        (intensity * x as f64) as u8
-                    });
+                    let color = get_texture_color(u as f64, 1.0 - v as f64, model)
+                        .map(|x| (intensity * x as f64) as u8);
 
                     image.put_pixel(x as u32, y as u32, color);
                 }
@@ -170,25 +179,25 @@ fn triangle(
 }
 
 fn is_point_in_triangle(
-    v1: Vector2<u32>,
-    v2: Vector2<u32>,
-    v3: Vector2<u32>,
-    point: Vector2<u32>,
+    v1: Point2<u32>,
+    v2: Point2<u32>,
+    v3: Point2<u32>,
+    point: Point2<u32>,
 ) -> bool {
     let barycentric = cartesian_to_barycentric(v1, v2, v3, point);
     !(barycentric.x < 0.0 || barycentric.y < 0.0 || barycentric.z < 0.0)
 }
 
 fn cartesian_to_barycentric(
-    v1: Vector2<u32>,
-    v2: Vector2<u32>,
-    v3: Vector2<u32>,
-    point: Vector2<u32>,
-) -> Vector3<f64> {
-    let v1: Vector2<i32> = v1.cast().unwrap();
-    let v2: Vector2<i32> = v2.cast().unwrap();
-    let v3: Vector2<i32> = v3.cast().unwrap();
-    let point: Vector2<i32> = point.cast().unwrap();
+    v1: Point2<u32>,
+    v2: Point2<u32>,
+    v3: Point2<u32>,
+    point: Point2<u32>,
+) -> Point3<f64> {
+    let v1: Point2<i32> = v1.cast().unwrap();
+    let v2: Point2<i32> = v2.cast().unwrap();
+    let v3: Point2<i32> = v3.cast().unwrap();
+    let point: Point2<i32> = point.cast().unwrap();
 
     let vec1 = Vector3::new(v3.x - v1.x, v2.x - v1.x, v1.x - point.x);
     let vec2 = Vector3::new(v3.y - v1.y, v2.y - v1.y, v1.y - point.y);
@@ -196,10 +205,10 @@ fn cartesian_to_barycentric(
 
     if u.z.abs() < 1 {
         // Doesn't matter what this is as long as one value is negative
-        return Vector3::new(0.0, 0.0, -1.0);
+        return Point3::new(0.0, 0.0, -1.0);
     }
 
-    Vector3::new(
+    Point3::new(
         1.0 - f64::from(u.x + u.y) / f64::from(u.z),
         f64::from(u.y) / f64::from(u.z),
         f64::from(u.x) / f64::from(u.z),
@@ -208,5 +217,11 @@ fn cartesian_to_barycentric(
 
 // Coordinates must be [0, 1]
 fn get_texture_color(x: f64, y: f64, model: &Model) -> image::Rgb<u8> {
-    model.texture.get_pixel((x * model.texture.width() as f64) as u32, (y * model.texture.height() as f64) as u32 - 1).to_rgb()
+    model
+        .texture
+        .get_pixel(
+            (x * model.texture.width() as f64) as u32,
+            (y * model.texture.height() as f64) as u32 - 1,
+        )
+        .to_rgb()
 }

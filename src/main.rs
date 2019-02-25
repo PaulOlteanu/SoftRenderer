@@ -8,5 +8,5 @@ fn main() {
     const TEXTURE_FILE: &str = "test_model.tga";
 
     let model = Model::new(MODEL_FILE, TEXTURE_FILE);
-    picture::render_model((800, 800), "asdf", &model);
+    picture::render_model((800, 800), "output", &model);
 }

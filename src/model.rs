@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
 
-use cgmath::Vector3;
+use cgmath::{Point3};
 
 use regex::{Captures, Regex};
 
@@ -17,9 +17,9 @@ pub struct FaceData {
 pub struct Model<'a> {
     model_file_path: &'a str,
     texture_file_path: &'a str,
-    verts: Vec<Vector3<f64>>,
-    texture_verts: Vec<Vector3<f64>>,
-    normal_verts: Vec<Vector3<f64>>,
+    verts: Vec<Point3<f64>>,
+    texture_verts: Vec<Point3<f64>>,
+    normal_verts: Vec<Point3<f64>>,
 
     // (VertexIndex, VertexTextureIndex, VertexNormalIndex)
     faces: Vec<FaceData>,
@@ -45,7 +45,7 @@ impl<'a> Model<'a> {
             match l.nth(0) {
                 Some("v") => {
                     let mut coordinates = l.map(move |x| x.parse::<f64>().unwrap());
-                    verts.push(Vector3::new(
+                    verts.push(Point3::new(
                         coordinates.next().unwrap(),
                         coordinates.next().unwrap(),
                         coordinates.next().unwrap(),
@@ -54,7 +54,7 @@ impl<'a> Model<'a> {
 
                 Some("vt") => {
                     let mut coordinates = l.map(move |x| x.parse::<f64>().unwrap());
-                    texture_verts.push(Vector3::new(
+                    texture_verts.push(Point3::new(
                         coordinates.next().unwrap(),
                         coordinates.next().unwrap(),
                         coordinates.next().unwrap(),
@@ -63,7 +63,7 @@ impl<'a> Model<'a> {
 
                 Some("vn") => {
                     let mut coordinates = l.map(move |x| x.parse::<f64>().unwrap());
-                    normal_verts.push(Vector3::new(
+                    normal_verts.push(Point3::new(
                         coordinates.next().unwrap(),
                         coordinates.next().unwrap(),
                         coordinates.next().unwrap(),
@@ -105,15 +105,15 @@ impl<'a> Model<'a> {
         }
     }
 
-    pub fn verts(&self) -> &Vec<Vector3<f64>> {
+    pub fn verts(&self) -> &Vec<Point3<f64>> {
         &self.verts
     }
 
-    pub fn texture_verts(&self) -> &Vec<Vector3<f64>> {
+    pub fn texture_verts(&self) -> &Vec<Point3<f64>> {
         &self.texture_verts
     }
 
-    pub fn normal_verts(&self) -> &Vec<Vector3<f64>> {
+    pub fn normal_verts(&self) -> &Vec<Point3<f64>> {
         &self.normal_verts
     }
 
